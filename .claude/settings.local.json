@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Rename-Item -Path 'C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\Livestream - STT' -NewName 'stt-system'\")",
+      "Bash(python -c \"import config; print\\(config.SAMPLE_RATE\\)\")",
+      "Bash(python -c ':*)",
+      "Bash(/c/Users/David/Desktop/Models/stt-system/env/Scripts/python.exe -c \"import torch; print\\(torch.__version__\\)\")",
+      "Bash(/c/Users/David/Desktop/Models/stt-system/env/Scripts/pip.exe list:*)",
+      "Bash(/c/Users/David/Desktop/Models/stt-system/env/Scripts/pip list:*)",
+      "Bash(cmd /c \"C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\pip.exe list\")",
+      "Bash(cmd /c \"C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\python.exe -m pip list 2>&1\")",
+      "Bash(cmd /c \"C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\python.exe -c \\\\\"import sys; print\\(sys.version\\)\\\\\"\")",
+      "Bash(powershell -Command \"& 'C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\python.exe' -c 'import sys; print\\(sys.version\\)'\")",
+      "Bash(powershell -Command \"& 'C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\python.exe' -m pip list\")",
+      "Bash(powershell -Command \"& 'C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\python.exe' -m pip install torch --index-url https://download.pytorch.org/whl/cpu\")",
+      "Bash(powershell -Command '& '\\\\''C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\python.exe'\\\\'' -c \":*)",
+      "Bash(powershell -Command \"& 'C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\python.exe' -m pip install numpy scipy\")",
+      "Bash(powershell -Command \"& 'C:\\\\Users\\\\David\\\\Desktop\\\\Models\\\\stt-system\\\\env\\\\Scripts\\\\python.exe' -c \\\\\"import torch; v = torch.tensor\\([[0.8]]\\).item\\(\\); print\\(repr\\(v\\)\\); print\\(v == 0.8\\)\\\\\"\")"
+    ]
+  }
+}
