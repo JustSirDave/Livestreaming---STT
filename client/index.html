@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live STT</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f0f0f;
+      color: #e8e8e8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+
+    h1 { font-size: 1.4rem; font-weight: 500; letter-spacing: 0.05em; margin-bottom: 1.5rem; color: #aaa; }
+
+    /* ── VAD indicator ── */
+    #vad-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #444;
+      margin-bottom: 1.5rem;
+      transition: background 0.15s;
+    }
+    #vad-dot[data-state="speech"]  { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    #vad-dot[data-state="silence"] { background: #444; }
+    #vad-dot[data-state="paused"]  { background: #f59e0b; }
+
+    /* ── Controls ── */
+    .controls { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+
+    button {
+      padding: 0.55rem 1.4rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    button:disabled { opacity: 0.35; cursor: default; }
+
+    #btn-start { background: #22c55e; color: #000; }
+    #btn-stop  { background: #ef4444; color: #fff; }
+    #btn-clear { background: #374151; color: #e8e8e8; }
+
+    /* ── Transcript area ── */
+    #transcript {
+      width: 100%;
+      max-width: 760px;
+      height: 60vh;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 1.2rem 1.4rem;
+      overflow-y: auto;
+      line-height: 1.7;
+      font-size: 1.05rem;
+    }
+
+    #transcript p.final   { color: #e8e8e8; margin-bottom: 0.4rem; }
+    #transcript span.interim { color: #6b7280; font-style: italic; }
+    #transcript p.log     { color: #374151; font-size: 0.8rem; margin-bottom: 0.5rem; }
+
+    /* scrollbar */
+    #transcript::-webkit-scrollbar       { width: 6px; }
+    #transcript::-webkit-scrollbar-track { background: transparent; }
+    #transcript::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+  <h1>Live Speech-to-Text</h1>
+
+  <div id="vad-dot"></div>
+
+  <div class="controls">
+    <button id="btn-start">Start</button>
+    <button id="btn-stop" disabled>Stop</button>
+    <button id="btn-clear">Clear</button>
+  </div>
+
+  <div id="transcript"></div>
+
+  <script type="module">
+    import { AudioCapture }    from "./audio_capture.js";
+    import { WebSocketClient } from "./websocket_client.js";
+    import { TranscriptUI }    from "./transcript_ui.js";
+
+    const ui  = new TranscriptUI();
+    const ws  = new WebSocketClient((msg) => ui.handle(msg));
+    const cap = new AudioCapture((frame) => ws.sendFrame(frame));
+
+    const btnStart = document.getElementById("btn-start");
+    const btnStop  = document.getElementById("btn-stop");
+    const btnClear = document.getElementById("btn-clear");
+
+    btnStart.addEventListener("click", async () => {
+      try {
+        ws.connect();
+        await cap.start();
+        btnStart.disabled = true;
+        btnStop.disabled  = false;
+      } catch (err) {
+        console.error("Failed to start:", err);
+        alert("Microphone access denied or unavailable.");
+      }
+    });
+
+    btnStop.addEventListener("click", () => {
+      cap.stop();
+      ws.disconnect();
+      btnStart.disabled = false;
+      btnStop.disabled  = true;
+    });
+
+    btnClear.addEventListener("click", () => ui.clear());
+  </script>
+
+</body>
+</html>
