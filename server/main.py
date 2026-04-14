@@ -80,7 +80,10 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         session.teardown()
         pipeline_task.cancel()
-        await websocket.close()
+        try:
+            await websocket.close()
+        except Exception:
+            pass  # already closed by client
 
 
 async def receive_loop(websocket: WebSocket, session: SessionManager):

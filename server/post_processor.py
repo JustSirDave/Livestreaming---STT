@@ -24,7 +24,10 @@ class TranscriptMessage:
             "start": self.start,
             "end": self.end,
             "confidence": self.confidence,
-            "words": self.words,
+            "words": [
+                w if isinstance(w, dict) else {"word": w.word, "start": w.start, "end": w.end, "probability": w.probability}
+                for w in self.words
+            ],
         }
 
 

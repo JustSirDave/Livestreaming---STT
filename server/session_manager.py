@@ -71,7 +71,10 @@ class SessionManager:
             is_speech = vad.classify(frame)
             action = self._handle_vad_result(is_speech)
 
-            if action == "ACCUMULATE":
+            if action == "SPEECH_START":
+                self.speech_frames.append(frame)
+                await self.transcript_queue.put({"type": "speech_start"})
+            elif action == "ACCUMULATE":
                 self.speech_frames.append(frame)
             elif action == "FLUSH":
                 await self._flush_and_transcribe(asr, post, audio_proc)
@@ -88,7 +91,7 @@ class SessionManager:
                 self.vad_state = VadState.SPEECH
                 self.silence_frame_count = 0
                 self.segment_start_time = time.time()
-                return "ACCUMULATE"
+                return "SPEECH_START"
             else:
                 self.silence_frame_count += 1
                 if self.silence_frame_count >= VAD_PAUSE_FRAMES:

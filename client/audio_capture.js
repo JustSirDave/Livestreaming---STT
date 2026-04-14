@@ -3,7 +3,7 @@
 // emits 320-sample (20ms) binary frames via onFrame callback.
 
 const SAMPLE_RATE = 16000;
-const FRAME_SIZE = 320; // samples per frame (20ms at 16kHz)
+const FRAME_SIZE = 512; // samples per frame (32ms at 16kHz) — must match server/config.py
 
 export class AudioCapture {
   constructor(onFrame) {

@@ -22,6 +22,9 @@ export class TranscriptUI {
         this._commitFinal(msg.text);
         this._setVad("silence");
         break;
+      case "speech_start":
+        this._setVad("speech");
+        break;
       case "pause":
         this._setVad("paused");
         break;
