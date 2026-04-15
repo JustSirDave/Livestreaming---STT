@@ -35,7 +35,7 @@ async def startup():
         app.state.whisper = whisper
         logger.info("Whisper model loaded.")
 
-        app.state.executor = ThreadPoolExecutor(max_workers=2)
+        app.state.executor = ThreadPoolExecutor(max_workers=4)
 
         app.state.vad = VadEngine(model=app.state.vad_model)
         app.state.asr = ASRModel(model=app.state.whisper, executor=app.state.executor)

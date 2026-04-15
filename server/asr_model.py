@@ -76,6 +76,8 @@ class ASRModel:
             beam_size=self.beam_size,
             word_timestamps=self.word_timestamps,
             language=self.language,
+            no_speech_threshold=0.8,        # discard segment if Whisper is very confident it's silence
+            condition_on_previous_text=False, # prevent hallucination chains
         )
         segments = list(segments_gen)
         return self._build_result(segments, info, segment_id)

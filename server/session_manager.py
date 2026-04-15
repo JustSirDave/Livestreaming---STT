@@ -9,6 +9,7 @@ from uuid import uuid4
 import numpy as np
 
 from config import (
+    INTERIM_INTERVAL_FRAMES,
     MIN_SEGMENT_DURATION,
     SAMPLE_RATE,
     VAD_FLUSH_FRAMES,
@@ -48,6 +49,8 @@ class SessionManager:
         self.segment_start_time: float = 0.0
         self.partial_text: str = ""
         self.segments: List[Segment] = []
+        self._speech_frame_count: int = 0
+        self._interim_running: bool = False
 
     async def pipeline_loop(self, vad, asr, post, audio_proc) -> None:
         while True:
@@ -72,14 +75,24 @@ class SessionManager:
 
             if action == "SPEECH_START":
                 self.speech_frames.append(frame)
+                self._speech_frame_count = 1
                 await self.transcript_queue.put({"type": "speech_start"})
             elif action == "ACCUMULATE":
                 self.speech_frames.append(frame)
+                self._speech_frame_count += 1
+                if self._speech_frame_count % INTERIM_INTERVAL_FRAMES == 0 and not self._interim_running:
+                    snapshot = list(self.speech_frames)
+                    self._interim_running = True
+                    asyncio.create_task(
+                        self._transcribe_interim(snapshot, asr, post, audio_proc)
+                    )
             elif action == "FLUSH":
                 # Snapshot and clear frames immediately so pipeline keeps consuming
                 # while ASR runs in the background (Whisper takes 2–5s on CPU).
                 snapshot = list(self.speech_frames)
                 self.speech_frames = []
+                self._speech_frame_count = 0
+                self._interim_running = False
                 asyncio.create_task(
                     self._flush_and_transcribe(snapshot, self.segment_start_time, asr, post, audio_proc)
                 )
@@ -157,6 +170,23 @@ class SessionManager:
         )
         self.add_final_segment(segment)
         await self.transcript_queue.put(message.to_dict())
+
+    async def _transcribe_interim(self, frames_snapshot: List[bytes], asr, post, audio_proc) -> None:
+        try:
+            total_samples = sum(len(f) // 2 for f in frames_snapshot)
+            if total_samples / SAMPLE_RATE < MIN_SEGMENT_DURATION:
+                return
+            try:
+                processed = audio_proc.process(frames_snapshot, SAMPLE_RATE)
+            except AudioProcessingError:
+                return
+            result = await asr.transcribe(processed, segment_id="interim")
+            if result.is_timeout or not result.text.strip():
+                return
+            message = post.process(result, type="interim")
+            await self.transcript_queue.put(message.to_dict())
+        finally:
+            self._interim_running = False
 
     def add_final_segment(self, segment: Segment) -> None:
         self.segments.append(segment)
