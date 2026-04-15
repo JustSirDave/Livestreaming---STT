@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live STT</title>
+  <title>Livestream Speech-to-Text</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -15,10 +15,15 @@
       flex-direction: column;
       align-items: center;
       min-height: 100vh;
-      padding: 2rem 1rem;
+      padding: 2rem 1.5rem;
     }
 
-    h1 { font-size: 1.4rem; font-weight: 500; letter-spacing: 0.05em; margin-bottom: 1.5rem; color: #aaa; }
+    .header {
+      text-align: center;
+      margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: 0.04em; color: #e8e8e8; margin-bottom: 0.35rem; }
+    .subtitle { font-size: 0.85rem; color: #6b7280; letter-spacing: 0.02em; }
 
     /* ── Mic circle indicator ── */
     #vad-mic {
@@ -26,35 +31,49 @@
       display: block;
     }
 
-    /* Ring and fill colour are driven purely by JS amplitude — no CSS state needed */
-
-    /* ── Controls ── */
-    .controls { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
-
-    button {
-      padding: 0.55rem 1.4rem;
-      border: none;
-      border-radius: 6px;
-      font-size: 0.95rem;
-      cursor: pointer;
-      font-weight: 500;
-      transition: opacity 0.15s;
+    /* ── Transcript wrapper — full width with action buttons inside ── */
+    .transcript-wrap {
+      position: relative;
+      width: 100%;
+      max-width: 1080px;
     }
-    button:disabled { opacity: 0.35; cursor: default; }
 
-    #btn-start { background: #22c55e; color: #000; }
-    #btn-stop  { background: #ef4444; color: #fff; }
-    #btn-clear { background: #374151; color: #e8e8e8; }
+    /* Action buttons inside top-right of transcript box */
+    .transcript-actions {
+      position: absolute;
+      top: 0.6rem;
+      right: 0.7rem;
+      display: flex;
+      gap: 0.4rem;
+      z-index: 1;
+    }
+
+    .transcript-actions button {
+      padding: 0.3rem 0.75rem;
+      border: 1px solid #374151;
+      border-radius: 5px;
+      background: #111;
+      color: #9ca3af;
+      font-size: 0.75rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .transcript-actions button:hover { background: #1f2937; color: #e8e8e8; border-color: #4b5563; }
+    .transcript-actions button.copied { color: #22c55e; border-color: #22c55e; }
 
     /* ── Transcript area ── */
     #transcript {
       width: 100%;
-      max-width: 760px;
       height: 60vh;
       background: #1a1a1a;
       border: 1px solid #2a2a2a;
       border-radius: 10px;
       padding: 1.2rem 1.4rem;
+      padding-top: 2.8rem; /* leave room for the action buttons */
       overflow-y: auto;
       line-height: 1.7;
       font-size: 1.05rem;
@@ -67,17 +86,42 @@
     #transcript::-webkit-scrollbar       { width: 6px; }
     #transcript::-webkit-scrollbar-track { background: transparent; }
     #transcript::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+    /* ── Record button below transcript ── */
+    .controls { display: flex; gap: 1rem; margin-top: 1.2rem; align-items: center; }
+
+    button {
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s, background 0.2s;
+    }
+    button:disabled { opacity: 0.35; cursor: default; }
+
+    #btn-record {
+      width: 48px;
+      height: 48px;
+      padding: 0;
+      border-radius: 50%;
+      background: #1a1a1a;
+      border: 2px solid #374151;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    #btn-record:hover { border-color: #6b7280; }
+    #btn-record.recording { border-color: #ef4444; background: #1f1010; }
   </style>
 </head>
 <body>
 
-  <h1>Live Speech-to-Text</h1>
+  <div class="header">
+    <h1>Livestream Speech-to-Text App.</h1>
+    <p class="subtitle">Transcribe your speech into text in real time &mdash; English only</p>
+  </div>
 
-  <!--
-    Mic indicator — 64×64 viewBox circle.
-    The green fill rect is clipped to the circle and grows from the bottom
-    based on microphone amplitude. The mic icon sits on top as a white outline.
-  -->
   <svg id="vad-mic" data-state="silence"
        viewBox="0 0 64 64" width="64" height="64"
        xmlns="http://www.w3.org/2000/svg">
@@ -86,47 +130,48 @@
         <circle cx="32" cy="32" r="30"/>
       </clipPath>
     </defs>
-
-    <!-- Circle background -->
     <circle cx="32" cy="32" r="30" fill="#1c1c1c"/>
-
-    <!-- Amplitude fill — clipped to circle, grows from bottom -->
-    <rect id="mic-amp-rect"
-          x="2" y="64" width="60" height="0"
-          fill="#3a3a3a"
-          clip-path="url(#circle-clip)"/>
-
-    <!-- Mic icon: capsule (smaller, centered) -->
-    <rect x="27" y="13" width="10" height="18" rx="5"
-          fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.8"/>
-
-    <!-- Mic icon: stand arc -->
-    <path d="M21 27 Q21 40 32 40 Q43 40 43 27"
-          fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.8"
-          stroke-linecap="round"/>
-
-    <!-- Mic icon: pole -->
-    <line x1="32" y1="40" x2="32" y2="45"
-          stroke="rgba(255,255,255,0.85)" stroke-width="1.8"
-          stroke-linecap="round"/>
-
-    <!-- Mic icon: base -->
-    <line x1="26" y1="45" x2="38" y2="45"
-          stroke="rgba(255,255,255,0.85)" stroke-width="1.8"
-          stroke-linecap="round"/>
-
-    <!-- Circle ring border (drawn last so it sits on top of fill) -->
-    <circle id="mic-ring" cx="32" cy="32" r="30"
-            fill="none" stroke="#3a3a3a" stroke-width="2"/>
+    <rect id="mic-amp-rect" x="2" y="64" width="60" height="0" fill="#3a3a3a" clip-path="url(#circle-clip)"/>
+    <rect x="27" y="16" width="10" height="18" rx="5" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.8"/>
+    <path d="M21 30 Q21 43 32 43 Q43 43 43 30" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="32" y1="43" x2="32" y2="48" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" stroke-linecap="round"/>
+    <line x1="26" y1="48" x2="38" y2="48" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" stroke-linecap="round"/>
+    <circle id="mic-ring" cx="32" cy="32" r="30" fill="none" stroke="#3a3a3a" stroke-width="2"/>
   </svg>
 
-  <div class="controls">
-    <button id="btn-start">Start</button>
-    <button id="btn-stop" disabled>Stop</button>
-    <button id="btn-clear">Clear</button>
+  <div class="transcript-wrap">
+    <!-- Action buttons overlaid inside the transcript box, top-right -->
+    <div class="transcript-actions">
+      <button id="btn-copy" title="Copy transcript">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V2zm2-1a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1H6z"/>
+          <path d="M2 5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-1H8v1H2V6h1V5H2z"/>
+        </svg>
+        Copy
+      </button>
+      <button id="btn-clear" title="Clear transcript">
+        <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+          <path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1 0-2h3.5l1-1h3l1 1H14.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118z"/>
+        </svg>
+        Clear
+      </button>
+    </div>
+
+    <div id="transcript"></div>
   </div>
 
-  <div id="transcript"></div>
+  <!-- Record/stop toggle below the transcript -->
+  <div class="controls">
+    <button id="btn-record" title="Start recording">
+      <svg id="icon-record" viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="12" cy="12" r="8" fill="#ef4444"/>
+      </svg>
+      <svg id="icon-stop" viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg" style="display:none">
+        <rect x="5" y="5" width="14" height="14" rx="2" fill="#e8e8e8"/>
+      </svg>
+    </button>
+  </div>
 
   <script type="module">
     import { AudioCapture }    from "./audio_capture.js";
@@ -140,30 +185,52 @@
       (amplitude) => ui.setAmplitude(amplitude)
     );
 
-    const btnStart = document.getElementById("btn-start");
-    const btnStop  = document.getElementById("btn-stop");
-    const btnClear = document.getElementById("btn-clear");
+    const btnRecord  = document.getElementById("btn-record");
+    const iconRecord = document.getElementById("icon-record");
+    const iconStop   = document.getElementById("icon-stop");
+    const btnClear   = document.getElementById("btn-clear");
+    const btnCopy    = document.getElementById("btn-copy");
+    let   recording  = false;
 
-    btnStart.addEventListener("click", async () => {
-      try {
-        ws.connect();
-        await cap.start();
-        btnStart.disabled = true;
-        btnStop.disabled  = false;
-      } catch (err) {
-        console.error("Failed to start:", err);
-        alert("Microphone access denied or unavailable.");
+    btnRecord.addEventListener("click", async () => {
+      if (!recording) {
+        try {
+          ws.connect();
+          await cap.start();
+          recording = true;
+          btnRecord.classList.add("recording");
+          btnRecord.title          = "Stop recording";
+          iconRecord.style.display = "none";
+          iconStop.style.display   = "";
+        } catch (err) {
+          console.error("Failed to start:", err);
+          alert("Microphone access denied or unavailable.");
+        }
+      } else {
+        cap.stop();
+        ws.disconnect();
+        recording = false;
+        btnRecord.classList.remove("recording");
+        btnRecord.title          = "Start recording";
+        iconRecord.style.display = "";
+        iconStop.style.display   = "none";
       }
     });
 
-    btnStop.addEventListener("click", () => {
-      cap.stop();
-      ws.disconnect();
-      btnStart.disabled = false;
-      btnStop.disabled  = true;
-    });
-
     btnClear.addEventListener("click", () => ui.clear());
+
+    btnCopy.addEventListener("click", () => {
+      const text = document.getElementById("transcript").innerText.trim();
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        btnCopy.classList.add("copied");
+        btnCopy.childNodes[1].textContent = " Copied!";
+        setTimeout(() => {
+          btnCopy.classList.remove("copied");
+          btnCopy.childNodes[1].textContent = " Copy";
+        }, 2000);
+      });
+    });
   </script>
 
 </body>
