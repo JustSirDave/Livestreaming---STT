@@ -2,7 +2,7 @@ import asyncio
 import enum
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List
 from uuid import uuid4
 
@@ -45,7 +45,6 @@ class SessionManager:
         self.vad_state: VadState = VadState.SILENCE
         self.silence_frame_count: int = 0
         self.speech_frames: List[bytes] = []
-        self.speech_frames_snapshot: List[bytes] = []
         self.segment_start_time: float = 0.0
         self.partial_text: str = ""
         self.segments: List[Segment] = []
@@ -77,7 +76,13 @@ class SessionManager:
             elif action == "ACCUMULATE":
                 self.speech_frames.append(frame)
             elif action == "FLUSH":
-                await self._flush_and_transcribe(asr, post, audio_proc)
+                # Snapshot and clear frames immediately so pipeline keeps consuming
+                # while ASR runs in the background (Whisper takes 2–5s on CPU).
+                snapshot = list(self.speech_frames)
+                self.speech_frames = []
+                asyncio.create_task(
+                    self._flush_and_transcribe(snapshot, self.segment_start_time, asr, post, audio_proc)
+                )
             elif action == "PAUSE":
                 await self.transcript_queue.put({"type": "pause"})
             elif action == "RESUME":
@@ -121,10 +126,13 @@ class SessionManager:
 
         return "CONTINUE"
 
-    async def _flush_and_transcribe(self, asr, post, audio_proc) -> None:
-        frames_snapshot = list(self.speech_frames)
-        audio = self._flush_segment()
-        duration = len(audio) / SAMPLE_RATE
+    async def _flush_and_transcribe(self, frames_snapshot: List[bytes], segment_start: float, asr, post, audio_proc) -> None:
+        if not frames_snapshot:
+            return
+
+        # Compute duration from snapshot length
+        total_samples = sum(len(f) // 2 for f in frames_snapshot)  # int16 = 2 bytes
+        duration = total_samples / SAMPLE_RATE
         if duration < MIN_SEGMENT_DURATION:
             return
 
@@ -143,21 +151,12 @@ class SessionManager:
         segment = Segment(
             segment_id=result.segment_id,
             text=message.text,
-            start=self.segment_start_time,
+            start=segment_start,
             end=time.time(),
             confidence=result.confidence,
         )
         self.add_final_segment(segment)
         await self.transcript_queue.put(message.to_dict())
-
-    def _flush_segment(self) -> np.ndarray:
-        if not self.speech_frames:
-            return np.array([], dtype=np.int16)
-        audio = np.concatenate([
-            np.frombuffer(f, dtype=np.int16) for f in self.speech_frames
-        ])
-        self.speech_frames = []
-        return audio
 
     def add_final_segment(self, segment: Segment) -> None:
         self.segments.append(segment)

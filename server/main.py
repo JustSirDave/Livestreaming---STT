@@ -77,6 +77,8 @@ async def websocket_endpoint(websocket: WebSocket):
         await asyncio.gather(receive_task, send_task)
     except WebSocketDisconnect:
         pass
+    except Exception as e:
+        logger.error("WebSocket error: %s: %s", type(e).__name__, e)
     finally:
         session.teardown()
         pipeline_task.cancel()
@@ -88,7 +90,12 @@ async def websocket_endpoint(websocket: WebSocket):
 
 async def receive_loop(websocket: WebSocket, session: SessionManager):
     while True:
-        data = await websocket.receive_bytes()
+        msg = await websocket.receive()
+        if msg["type"] == "websocket.disconnect":
+            raise WebSocketDisconnect(msg.get("code", 1000))
+        data = msg.get("bytes")
+        if not data:
+            continue
         if session.audio_queue.full():
             try:
                 session.audio_queue.get_nowait()
