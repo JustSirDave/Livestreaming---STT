@@ -25,14 +25,17 @@
     h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: 0.04em; color: #e8e8e8; margin-bottom: 0.35rem; }
     .subtitle { font-size: 0.85rem; color: #6b7280; letter-spacing: 0.02em; }
 
-    /* ── Waveform visualizer — hidden until recording ── */
+    /* ── Waveform visualizer — always visible, flat until recording ── */
     #waveform {
-      display: none;
+      display: block;
       width: 480px;
       max-width: 100%;
       height: 80px;
       margin-bottom: 1.5rem;
+      opacity: 0.18;
+      transition: opacity 0.4s;
     }
+    #waveform.active { opacity: 1; }
 
     /* ── Transcript wrapper ── */
     .transcript-wrap {
@@ -114,6 +117,24 @@
     }
     #btn-record:hover    { border-color: #6b7280; }
     #btn-record.recording { border-color: #ef4444; background: #1f1010; }
+
+    #btn-mute {
+      width: 48px;
+      height: 48px;
+      padding: 0;
+      border-radius: 50%;
+      background: #1a1a1a;
+      border: 2px solid #374151;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0.3;
+      pointer-events: none;
+      transition: border-color 0.2s, background 0.2s, opacity 0.3s;
+    }
+    #btn-mute.enabled          { opacity: 1; pointer-events: auto; }
+    #btn-mute.enabled:hover    { border-color: #6b7280; }
+    #btn-mute.muted            { border-color: #f59e0b; background: #1a1500; }
   </style>
 </head>
 <body>
@@ -154,6 +175,25 @@
       </svg>
       <svg id="icon-stop" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg" style="display:none">
         <rect x="5" y="5" width="14" height="14" rx="2" fill="#e8e8e8"/>
+      </svg>
+    </button>
+
+    <!-- Mute / unmute — visible only while recording -->
+    <button id="btn-mute" title="Mute microphone">
+      <!-- mic-on icon -->
+      <svg id="icon-mic" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#e8e8e8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+        <rect x="9" y="2" width="6" height="12" rx="3"/>
+        <path d="M5 10a7 7 0 0 0 14 0"/>
+        <line x1="12" y1="17" x2="12" y2="21"/>
+        <line x1="9"  y1="21" x2="15" y2="21"/>
+      </svg>
+      <!-- mic-off icon (crossed out) -->
+      <svg id="icon-mic-off" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg" style="display:none">
+        <line x1="2" y1="2" x2="22" y2="22"/>
+        <path d="M18.9 10a7 7 0 0 1-13.6 2.9M9 9V7a3 3 0 0 1 5.12-2.12"/>
+        <rect x="9" y="2" width="6" height="10" rx="3" opacity="0.4"/>
+        <line x1="12" y1="17" x2="12" y2="21"/>
+        <line x1="9"  y1="21" x2="15" y2="21"/>
       </svg>
     </button>
   </div>
@@ -205,19 +245,27 @@
     }
 
     function startWave() {
-      canvas.style.display = "block";
+      canvas.classList.add("active");
       barSmooth.fill(0);
       waveTime = 0;
       if (!waveFrame) drawWave();
     }
 
     function stopWave() {
-      if (waveFrame) { cancelAnimationFrame(waveFrame); waveFrame = null; }
-      wCtx.clearRect(0, 0, canvas.width, canvas.height);
-      canvas.style.display = "none";
+      canvas.classList.remove("active");
       waveAmp = 0;
-      barSmooth.fill(0);
+      // bars decay naturally; stop animation after they settle
+      setTimeout(() => {
+        if (!waveFrame) return;
+        cancelAnimationFrame(waveFrame);
+        waveFrame = null;
+        wCtx.clearRect(0, 0, canvas.width, canvas.height);
+        barSmooth.fill(0);
+      }, 600);
     }
+
+    // Draw idle flat line on load
+    drawWave();
 
     // ── App setup ────────────────────────────────────────────────────────────
     const ui = new TranscriptUI();
@@ -227,12 +275,15 @@
       (amplitude) => { waveAmp = amplitude; }   // drive waveform directly
     );
 
-    const btnRecord  = document.getElementById("btn-record");
-    const iconRecord = document.getElementById("icon-record");
-    const iconStop   = document.getElementById("icon-stop");
-    const btnClear   = document.getElementById("btn-clear");
-    const btnCopy    = document.getElementById("btn-copy");
-    let   recording  = false;
+    const btnRecord   = document.getElementById("btn-record");
+    const iconRecord  = document.getElementById("icon-record");
+    const iconStop    = document.getElementById("icon-stop");
+    const btnMute     = document.getElementById("btn-mute");
+    const iconMic     = document.getElementById("icon-mic");
+    const iconMicOff  = document.getElementById("icon-mic-off");
+    const btnClear    = document.getElementById("btn-clear");
+    const btnCopy     = document.getElementById("btn-copy");
+    let   recording   = false;
 
     btnRecord.addEventListener("click", async () => {
       if (!recording) {
@@ -245,11 +296,19 @@
           btnRecord.title          = "Stop recording";
           iconRecord.style.display = "none";
           iconStop.style.display   = "";
+          btnMute.classList.add("enabled");
         } catch (err) {
           console.error("Failed to start:", err);
           alert("Microphone access denied or unavailable.");
         }
       } else {
+        // Reset mute state before stopping
+        if (cap.muted) cap.unmute();
+        btnMute.classList.remove("muted", "enabled");
+        iconMic.style.display    = "";
+        iconMicOff.style.display = "none";
+        btnMute.title            = "Mute microphone";
+
         cap.stop();
         ws.disconnect();
         recording = false;
@@ -258,6 +317,23 @@
         btnRecord.title          = "Start recording";
         iconRecord.style.display = "";
         iconStop.style.display   = "none";
+      }
+    });
+
+    btnMute.addEventListener("click", () => {
+      if (!cap.muted) {
+        cap.mute();
+        waveAmp = 0;
+        btnMute.classList.add("muted");
+        btnMute.title            = "Unmute microphone";
+        iconMic.style.display    = "none";
+        iconMicOff.style.display = "";
+      } else {
+        cap.unmute();
+        btnMute.classList.remove("muted");
+        btnMute.title            = "Mute microphone";
+        iconMic.style.display    = "";
+        iconMicOff.style.display = "none";
       }
     });
 

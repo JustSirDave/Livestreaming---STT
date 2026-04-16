@@ -17,6 +17,18 @@ export class AudioCapture {
     this.stream      = null;
     this._overflow   = new Int16Array(0);
     this._smoothAmp  = 0.0;
+    this._muted      = false;
+  }
+
+  get muted() { return this._muted; }
+
+  mute() {
+    this._muted = true;
+    if (this.onAmplitude) this.onAmplitude(0.0);
+  }
+
+  unmute() {
+    this._muted = false;
   }
 
   async start() {
@@ -83,10 +95,10 @@ export class AudioCapture {
     combined.set(this._overflow, 0);
     combined.set(int16, this._overflow.length);
 
-    // Emit complete FRAME_SIZE-sample frames
+    // Emit complete FRAME_SIZE-sample frames (suppressed when muted)
     let offset = 0;
     while (offset + FRAME_SIZE <= combined.length) {
-      this.onFrame(combined.slice(offset, offset + FRAME_SIZE));
+      if (!this._muted) this.onFrame(combined.slice(offset, offset + FRAME_SIZE));
       offset += FRAME_SIZE;
     }
 
