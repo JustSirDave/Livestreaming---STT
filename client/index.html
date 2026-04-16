@@ -25,20 +25,22 @@
     h1 { font-size: 1.4rem; font-weight: 600; letter-spacing: 0.04em; color: #e8e8e8; margin-bottom: 0.35rem; }
     .subtitle { font-size: 0.85rem; color: #6b7280; letter-spacing: 0.02em; }
 
-    /* ── Mic circle indicator ── */
-    #vad-mic {
+    /* ── Waveform visualizer — hidden until recording ── */
+    #waveform {
+      display: none;
+      width: 480px;
+      max-width: 100%;
+      height: 80px;
       margin-bottom: 1.5rem;
-      display: block;
     }
 
-    /* ── Transcript wrapper — full width with action buttons inside ── */
+    /* ── Transcript wrapper ── */
     .transcript-wrap {
       position: relative;
       width: 100%;
       max-width: 1080px;
     }
 
-    /* Action buttons inside top-right of transcript box */
     .transcript-actions {
       position: absolute;
       top: 0.6rem;
@@ -73,35 +75,34 @@
       border: 1px solid #2a2a2a;
       border-radius: 10px;
       padding: 1.2rem 1.4rem;
-      padding-top: 2.8rem; /* leave room for the action buttons */
+      padding-top: 2.8rem;
       overflow-y: auto;
       line-height: 1.7;
       font-size: 1.05rem;
     }
 
-    #transcript p.final    { color: #e8e8e8; margin-bottom: 0.4rem; }
+    #transcript p.final      { color: #e8e8e8; margin-bottom: 0.4rem; }
     #transcript span.interim { color: #6b7280; font-style: italic; }
-    #transcript p.log      { color: #374151; font-size: 0.8rem; margin-bottom: 0.5rem; }
+    #transcript p.log        { color: #374151; font-size: 0.8rem; margin-bottom: 0.5rem; }
 
     #transcript::-webkit-scrollbar       { width: 6px; }
     #transcript::-webkit-scrollbar-track { background: transparent; }
     #transcript::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 
-    /* ── Record button below transcript ── */
-    .controls { display: flex; gap: 1rem; margin-top: 1.2rem; align-items: center; }
-
-    button {
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-weight: 500;
-      transition: opacity 0.15s, background 0.2s;
+    /* ── Record button ── */
+    .controls {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.2rem;
+      align-items: center;
     }
+
+    button { border: none; border-radius: 6px; cursor: pointer; font-weight: 500; transition: opacity 0.15s, background 0.2s; }
     button:disabled { opacity: 0.35; cursor: default; }
 
     #btn-record {
-      width: 48px;
-      height: 48px;
+      width: 64px;
+      height: 64px;
       padding: 0;
       border-radius: 50%;
       background: #1a1a1a;
@@ -111,7 +112,7 @@
       justify-content: center;
       transition: border-color 0.2s, background 0.2s;
     }
-    #btn-record:hover { border-color: #6b7280; }
+    #btn-record:hover    { border-color: #6b7280; }
     #btn-record.recording { border-color: #ef4444; background: #1f1010; }
   </style>
 </head>
@@ -122,25 +123,10 @@
     <p class="subtitle">Transcribe your speech into text in real time &mdash; English only</p>
   </div>
 
-  <svg id="vad-mic" data-state="silence"
-       viewBox="0 0 64 64" width="64" height="64"
-       xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <clipPath id="circle-clip">
-        <circle cx="32" cy="32" r="30"/>
-      </clipPath>
-    </defs>
-    <circle cx="32" cy="32" r="30" fill="#1c1c1c"/>
-    <rect id="mic-amp-rect" x="2" y="64" width="60" height="0" fill="#3a3a3a" clip-path="url(#circle-clip)"/>
-    <rect x="27" y="16" width="10" height="18" rx="5" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.8"/>
-    <path d="M21 30 Q21 43 32 43 Q43 43 43 30" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" stroke-linecap="round"/>
-    <line x1="32" y1="43" x2="32" y2="48" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" stroke-linecap="round"/>
-    <line x1="26" y1="48" x2="38" y2="48" stroke="rgba(255,255,255,0.85)" stroke-width="1.8" stroke-linecap="round"/>
-    <circle id="mic-ring" cx="32" cy="32" r="30" fill="none" stroke="#3a3a3a" stroke-width="2"/>
-  </svg>
+  <!-- Waveform canvas — appears when recording, driven by mic amplitude -->
+  <canvas id="waveform" width="480" height="80"></canvas>
 
   <div class="transcript-wrap">
-    <!-- Action buttons overlaid inside the transcript box, top-right -->
     <div class="transcript-actions">
       <button id="btn-copy" title="Copy transcript">
         <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -161,13 +147,12 @@
     <div id="transcript"></div>
   </div>
 
-  <!-- Record/stop toggle below the transcript -->
   <div class="controls">
     <button id="btn-record" title="Start recording">
-      <svg id="icon-record" viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+      <svg id="icon-record" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
         <circle cx="12" cy="12" r="8" fill="#ef4444"/>
       </svg>
-      <svg id="icon-stop" viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg" style="display:none">
+      <svg id="icon-stop" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg" style="display:none">
         <rect x="5" y="5" width="14" height="14" rx="2" fill="#e8e8e8"/>
       </svg>
     </button>
@@ -178,11 +163,68 @@
     import { WebSocketClient } from "./websocket_client.js";
     import { TranscriptUI }    from "./transcript_ui.js";
 
-    const ui  = new TranscriptUI();
-    const ws  = new WebSocketClient((msg) => ui.handle(msg));
+    // ── Waveform visualizer ──────────────────────────────────────────────────
+    const canvas   = document.getElementById("waveform");
+    const wCtx     = canvas.getContext("2d");
+    const N_BARS   = 42;
+
+    // Per-bar constants (randomised once)
+    const barFreqs  = Array.from({length: N_BARS}, () => 1.5 + Math.random() * 4.0);
+    const barPhases = Array.from({length: N_BARS}, () => Math.random() * Math.PI * 2);
+    const barSmooth = new Float32Array(N_BARS);
+
+    let waveAmp   = 0;   // updated by onAmplitude
+    let waveTime  = 0;
+    let waveFrame = null;
+
+    function drawWave() {
+      const W = canvas.width;
+      const H = canvas.height;
+      const slotW = W / N_BARS;
+      const barW  = Math.max(2, slotW * 0.36);
+
+      wCtx.clearRect(0, 0, W, H);
+      wCtx.fillStyle = "#ffffff";
+
+      waveTime += 0.045;
+
+      for (let i = 0; i < N_BARS; i++) {
+        // Independent oscillation per bar scaled by global amplitude
+        const osc    = Math.abs(Math.sin(waveTime * barFreqs[i] + barPhases[i]));
+        const target = waveAmp * (0.12 + 0.88 * osc);
+        barSmooth[i] += (target - barSmooth[i]) * 0.28;
+
+        const barH = Math.max(2, barSmooth[i] * H * 0.94);
+        const x    = i * slotW + (slotW - barW) / 2;
+        const y    = (H - barH) / 2;
+
+        wCtx.fillRect(Math.round(x), Math.round(y), Math.ceil(barW), Math.ceil(barH));
+      }
+
+      waveFrame = requestAnimationFrame(drawWave);
+    }
+
+    function startWave() {
+      canvas.style.display = "block";
+      barSmooth.fill(0);
+      waveTime = 0;
+      if (!waveFrame) drawWave();
+    }
+
+    function stopWave() {
+      if (waveFrame) { cancelAnimationFrame(waveFrame); waveFrame = null; }
+      wCtx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.display = "none";
+      waveAmp = 0;
+      barSmooth.fill(0);
+    }
+
+    // ── App setup ────────────────────────────────────────────────────────────
+    const ui = new TranscriptUI();
+    const ws = new WebSocketClient((msg) => ui.handle(msg));
     const cap = new AudioCapture(
       (frame)     => ws.sendFrame(frame),
-      (amplitude) => ui.setAmplitude(amplitude)
+      (amplitude) => { waveAmp = amplitude; }   // drive waveform directly
     );
 
     const btnRecord  = document.getElementById("btn-record");
@@ -198,6 +240,7 @@
           ws.connect();
           await cap.start();
           recording = true;
+          startWave();
           btnRecord.classList.add("recording");
           btnRecord.title          = "Stop recording";
           iconRecord.style.display = "none";
@@ -210,6 +253,7 @@
         cap.stop();
         ws.disconnect();
         recording = false;
+        stopWave();
         btnRecord.classList.remove("recording");
         btnRecord.title          = "Start recording";
         iconRecord.style.display = "";

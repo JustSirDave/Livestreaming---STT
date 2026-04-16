@@ -135,6 +135,33 @@ class PostProcessor:
         return text
 
     def _apply_itn_regex(self, text: str) -> str:
+        # Rule 0 — spoken times (must run BEFORE cardinal rule)
+        # "three thirty pm" → "3:30 PM",  "nine am" → "9 AM"
+        _NUM_PAT = '|'.join(re.escape(k) for k in sorted(_ALL_NUMBERS, key=len, reverse=True))
+
+        def replace_spoken_time(m):
+            hour = _ALL_NUMBERS.get(m.group(1).lower())
+            mins = _ALL_NUMBERS.get(m.group(2).lower()) if m.group(2) else None
+            period = m.group(3).upper()
+            if hour is None or not (1 <= hour <= 12):
+                return m.group(0)
+            if mins is not None:
+                if not (0 <= mins <= 59):
+                    return m.group(0)
+                return f"{hour}:{mins:02d} {period}"
+            return f"{hour} {period}"
+
+        # With minutes: "three thirty pm"
+        text = re.sub(
+            rf'\b({_NUM_PAT})\s+({_NUM_PAT})\s+(am|pm)\b',
+            replace_spoken_time, text, flags=re.IGNORECASE
+        )
+        # On the hour: "nine am"
+        text = re.sub(
+            rf'\b({_NUM_PAT})\s+(am|pm)\b',
+            replace_spoken_time, text, flags=re.IGNORECASE
+        )
+
         # Rule 1 — currency: "fifty dollars" → "$50"
         def replace_currency(m):
             num_words = m.group(1).strip().lower().split()

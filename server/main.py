@@ -74,14 +74,17 @@ async def websocket_endpoint(websocket: WebSocket):
     send_task = asyncio.create_task(send_loop(websocket, session))
 
     try:
-        await asyncio.gather(receive_task, send_task)
+        # pipeline_task included so a crash there surfaces and tears down the session
+        await asyncio.gather(pipeline_task, receive_task, send_task)
     except WebSocketDisconnect:
         pass
     except Exception as e:
         logger.error("WebSocket error: %s: %s", type(e).__name__, e)
     finally:
         session.teardown()
-        pipeline_task.cancel()
+        for t in (pipeline_task, receive_task, send_task):
+            t.cancel()
+        await asyncio.gather(pipeline_task, receive_task, send_task, return_exceptions=True)
         try:
             await websocket.close()
         except Exception:
@@ -110,6 +113,8 @@ async def receive_loop(websocket: WebSocket, session: SessionManager):
 async def send_loop(websocket: WebSocket, session: SessionManager):
     while True:
         message = await session.transcript_queue.get()
+        if message is None:
+            break
         await websocket.send_text(json.dumps(message))
 
 

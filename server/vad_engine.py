@@ -21,6 +21,13 @@ class VadEngine:
             logger.warning("VAD classify failed, returning False: %s", e)
             return False
 
+    def reset(self) -> None:
+        """Reset Silero's internal LSTM state. Call between utterances to prevent state accumulation."""
+        try:
+            self.model.reset_states()
+        except Exception as e:
+            logger.warning("VAD reset failed: %s", e)
+
     def _preprocess(self, frame: bytes) -> torch.Tensor:
         audio = np.frombuffer(frame, dtype=np.int16) / 32768.0
         return torch.tensor(audio, dtype=torch.float32).unsqueeze(0)  # shape (1, 320)

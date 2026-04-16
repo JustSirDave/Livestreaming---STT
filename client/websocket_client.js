@@ -17,7 +17,7 @@ export class WebSocketClient {
   }
 
   connect() {
-    if (this._stopped) return;
+    this._stopped = false;
     this.ws = new WebSocket(WS_URL);
     this.ws.binaryType = "arraybuffer";
 
