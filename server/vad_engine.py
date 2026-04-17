@@ -16,8 +16,12 @@ class VadEngine:
         try:
             tensor = self._preprocess(frame)
             confidence = self.model(tensor, SAMPLE_RATE).item()
-            return confidence >= self.threshold
+            is_speech = confidence >= self.threshold
+            print(f"[VAD] conf={confidence:.3f} thresh={self.threshold} speech={is_speech}", flush=True)
+            logger.debug("VAD confidence=%.3f threshold=%.2f speech=%s", confidence, self.threshold, is_speech)
+            return is_speech
         except Exception as e:
+            print(f"[VAD] EXCEPTION: {e}", flush=True)
             logger.warning("VAD classify failed, returning False: %s", e)
             return False
 

@@ -51,6 +51,26 @@ export class AudioCapture {
 
     source.connect(this.processor);
     this.processor.connect(this.context.destination);
+
+    // OS-level mic mute/unmute (keyboard hardware key) can suspend the
+    // AudioContext or mute the track. Resume automatically on unmute.
+    this.stream.getTracks().forEach((track) => {
+      track.onmute   = () => { console.warn("[AudioCapture] OS mic muted"); };
+      track.onunmute = () => {
+        console.log("[AudioCapture] OS mic unmuted — resuming context");
+        if (this.context && this.context.state === "suspended") {
+          this.context.resume();
+        }
+      };
+    });
+
+    // Also resume if the AudioContext gets suspended for any reason
+    // (tab focus loss, OS events, etc.)
+    this.context.onstatechange = () => {
+      if (this.context && this.context.state === "suspended") {
+        this.context.resume();
+      }
+    };
   }
 
   stop() {
