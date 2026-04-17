@@ -42,8 +42,8 @@ async def startup():
         app.state.vad_model = vad_model
         logger.info("Silero VAD loaded.")
 
-        logger.info("Loading Whisper model...")
-        whisper = WhisperModel("base", device="cpu", compute_type="int8")
+        logger.info("Loading Whisper model (base.en)...")
+        whisper = WhisperModel("base.en", device="cpu", compute_type="int8")
         app.state.whisper = whisper
         logger.info("Whisper model loaded.")
 
@@ -54,6 +54,12 @@ async def startup():
         app.state.post = PostProcessor()
         app.state.audio_proc = AudioProcessor()
 
+        # Warm up the model so the first real user inference isn't slow
+        logger.info("Warming up ASR model...")
+        import numpy as _np
+        _dummy = _np.zeros(16000, dtype=_np.float32)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(app.state.executor, app.state.asr._run_inference, _dummy, "warmup")
         logger.info("All components initialised — server ready.")
     except Exception:
         logger.exception("Startup failed — refusing to start.")
@@ -78,6 +84,7 @@ async def websocket_endpoint(websocket: WebSocket):
     # VAD is stateful (Silero LSTM) — create a fresh instance per session
     # so state never leaks between connections or reconnects
     vad = VadEngine(model=app.state.vad_model)
+    vad.reset()
 
     pipeline_task = asyncio.create_task(
         session.pipeline_loop(

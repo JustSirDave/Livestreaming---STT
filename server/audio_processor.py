@@ -15,7 +15,6 @@ class AudioProcessor:
         audio = self._to_float32(audio)
         if input_rate != SAMPLE_RATE:
             audio = self._resample(audio, input_rate)
-        audio = self._normalise(audio)
         self._validate(audio)
         return audio
 

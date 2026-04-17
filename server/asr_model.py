@@ -56,14 +56,18 @@ class ASRModel:
         self.beam_size = beam_size
         self.word_timestamps = word_timestamps
         self.timeout = timeout
+        # CTranslate2 (faster-whisper) is not thread-safe for concurrent inference
+        # on the same model instance — serialize all calls with a semaphore
+        self._sem = asyncio.Semaphore(1)
 
     async def transcribe(self, audio: np.ndarray, segment_id: str = "") -> ASRResult:
         loop = asyncio.get_event_loop()
         try:
-            future = loop.run_in_executor(
-                self.executor, self._run_inference, audio, segment_id
-            )
-            return await asyncio.wait_for(future, timeout=self.timeout)
+            async with self._sem:
+                future = loop.run_in_executor(
+                    self.executor, self._run_inference, audio, segment_id
+                )
+                return await asyncio.wait_for(future, timeout=self.timeout)
         except asyncio.TimeoutError:
             return _empty_result(segment_id=segment_id, is_timeout=True)
         except Exception as e:
@@ -76,9 +80,9 @@ class ASRModel:
             beam_size=self.beam_size,
             word_timestamps=self.word_timestamps,
             language=self.language,
-            no_speech_threshold=0.8,        # discard segment if Whisper is very confident it's silence
+            no_speech_threshold=0.6,
             condition_on_previous_text=False,
-            temperature=0.0, # prevent hallucination chains
+            temperature=0.0,
             log_prob_threshold=-1.0,
         )
         segments = list(segments_gen)
