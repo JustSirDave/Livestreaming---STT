@@ -97,19 +97,20 @@ async def websocket_endpoint(websocket: WebSocket):
 
     receive_task = asyncio.create_task(receive_loop(websocket, session))
     send_task = asyncio.create_task(send_loop(websocket, session))
+    keepalive_task = asyncio.create_task(keepalive_loop(websocket))
 
     try:
         # pipeline_task included so a crash there surfaces and tears down the session
-        await asyncio.gather(pipeline_task, receive_task, send_task)
+        await asyncio.gather(pipeline_task, receive_task, send_task, keepalive_task)
     except WebSocketDisconnect:
         pass
     except Exception as e:
         logger.error("WebSocket error: %s: %s", type(e).__name__, e)
     finally:
         session.teardown()
-        for t in (pipeline_task, receive_task, send_task):
+        for t in (pipeline_task, receive_task, send_task, keepalive_task):
             t.cancel()
-        await asyncio.gather(pipeline_task, receive_task, send_task, return_exceptions=True)
+        await asyncio.gather(pipeline_task, receive_task, send_task, keepalive_task, return_exceptions=True)
         try:
             await websocket.close()
         except Exception:
@@ -146,6 +147,12 @@ async def send_loop(websocket: WebSocket, session: SessionManager):
         if message is None:
             break
         await websocket.send_text(json.dumps(message))
+
+
+async def keepalive_loop(websocket: WebSocket):
+    while True:
+        await asyncio.sleep(20)
+        await websocket.send_text(json.dumps({"type": "ping"}))
 
 
 # Serve frontend — must be mounted last so API routes take priority

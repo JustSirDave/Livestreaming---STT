@@ -337,6 +337,11 @@
       }
     });
 
+    // Resume AudioContext when tab becomes visible again (browser may have suspended it)
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) cap.resumeIfSuspended();
+    });
+
     btnClear.addEventListener("click", () => ui.clear());
 
     btnCopy.addEventListener("click", () => {
