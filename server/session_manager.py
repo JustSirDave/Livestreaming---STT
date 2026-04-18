@@ -52,7 +52,7 @@ class SessionManager:
         self._interim_task: Optional[asyncio.Task] = None
         self._flush_tasks: set = set()  # strong refs prevent GC of pending flush tasks
 
-    async def pipeline_loop(self, vad, asr, post, audio_proc) -> None:
+    async def pipeline_loop(self, vad, asr_interim, asr_final, post, audio_proc) -> None:
         try:
             while True:
                 frame = await self.audio_queue.get()
@@ -79,12 +79,10 @@ class SessionManager:
                     await self.transcript_queue.put({"type": "interim", "text": "…",
                                                       "segment_id": "", "start": 0,
                                                       "end": 0, "confidence": 0, "words": []})
-                    self._start_interim(asr, post, audio_proc)
+                    self._start_interim(asr_interim, post, audio_proc)
 
                 elif action == "ACCUMULATE":
                     self.speech_frames.append(frame)
-                    # Force-flush if segment grows too long (short pauses between
-                    # phrases prevent normal VAD flush, causing MAX_SEGMENT_DURATION rejection)
                     accumulated_sec = len(self.speech_frames) * FRAME_SIZE / SAMPLE_RATE
                     if accumulated_sec >= VAD_MAX_SPEECH_SEC:
                         self._cancel_interim()
@@ -93,15 +91,15 @@ class SessionManager:
                         old_start = self.segment_start_time
                         self.speech_frames = []
                         self.segment_start_time = time.time()
-                        self._start_interim(asr, post, audio_proc)
-                        self._create_flush_task(snapshot, old_start, asr, post, audio_proc)
+                        self._start_interim(asr_interim, post, audio_proc)
+                        self._create_flush_task(snapshot, old_start, asr_final, post, audio_proc)
 
                 elif action == "FLUSH":
                     self._cancel_interim()
                     vad.reset()
                     snapshot = list(self.speech_frames)
                     self.speech_frames = []
-                    self._create_flush_task(snapshot, self.segment_start_time, asr, post, audio_proc)
+                    self._create_flush_task(snapshot, self.segment_start_time, asr_final, post, audio_proc)
 
         except Exception:
             logger.exception("pipeline_loop crashed — session %s", self.session_id)
@@ -177,6 +175,8 @@ class SessionManager:
 
         except asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("_interim_worker crashed — session %s", self.session_id)
 
     async def _flush_and_transcribe(self, frames_snapshot: List[bytes], segment_start: float, asr, post, audio_proc) -> None:
         try:

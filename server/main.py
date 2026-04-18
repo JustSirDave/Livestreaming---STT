@@ -42,24 +42,33 @@ async def startup():
         app.state.vad_model = vad_model
         logger.info("Silero VAD loaded.")
 
-        logger.info("Loading Whisper model (base.en)...")
-        whisper = WhisperModel("base.en", device="cpu", compute_type="int8")
-        app.state.whisper = whisper
-        logger.info("Whisper model loaded.")
+        logger.info("Loading Whisper base.en (final)...")
+        whisper_final = WhisperModel("base.en", device="cpu", compute_type="int8")
+        logger.info("Loading Whisper tiny.en (interim)...")
+        whisper_interim = WhisperModel("tiny.en", device="cpu", compute_type="int8")
+        logger.info("Whisper models loaded.")
 
-        app.state.executor = ThreadPoolExecutor(max_workers=4)
+        # Separate executors — CTranslate2 models must not share threads
+        app.state.executor_final   = ThreadPoolExecutor(max_workers=1)
+        app.state.executor_interim = ThreadPoolExecutor(max_workers=1)
 
         app.state.vad = VadEngine(model=app.state.vad_model)
-        app.state.asr = ASRModel(model=app.state.whisper, executor=app.state.executor)
+        app.state.asr_final   = ASRModel(model=whisper_final,   executor=app.state.executor_final)
+        app.state.asr_interim = ASRModel(model=whisper_interim, executor=app.state.executor_interim)
         app.state.post = PostProcessor()
         app.state.audio_proc = AudioProcessor()
 
-        # Warm up the model so the first real user inference isn't slow
-        logger.info("Warming up ASR model...")
+        # Warm up both models so first real inference isn't slow
+        logger.info("Warming up ASR models...")
         import numpy as _np
         _dummy = _np.zeros(16000, dtype=_np.float32)
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(app.state.executor, app.state.asr._run_inference, _dummy, "warmup")
+        await loop.run_in_executor(app.state.executor_final,   app.state.asr_final._run_inference,   _dummy, "warmup")
+        await loop.run_in_executor(app.state.executor_interim, app.state.asr_interim._run_inference, _dummy, "warmup")
+        # Force-flush log handlers after warmup (warmup runs in executor threads which
+        # can reset the logging module's internal state on some platforms)
+        for h in logging.getLogger().handlers:
+            h.flush()
         logger.info("All components initialised — server ready.")
     except Exception:
         logger.exception("Startup failed — refusing to start.")
@@ -89,7 +98,8 @@ async def websocket_endpoint(websocket: WebSocket):
     pipeline_task = asyncio.create_task(
         session.pipeline_loop(
             vad,
-            app.state.asr,
+            app.state.asr_interim,
+            app.state.asr_final,
             app.state.post,
             app.state.audio_proc,
         )
