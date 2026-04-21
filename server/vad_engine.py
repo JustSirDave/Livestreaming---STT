@@ -14,11 +14,13 @@ class VadEngine:
 
     def classify(self, frame: bytes) -> bool:
         try:
-            tensor = self._preprocess(frame)
+            audio = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32768.0
+            rms = float(np.sqrt(np.mean(audio ** 2)))
+            tensor = torch.tensor(audio, dtype=torch.float32).unsqueeze(0)
             confidence = self.model(tensor, SAMPLE_RATE).item()
             is_speech = confidence >= self.threshold
-            print(f"[VAD] conf={confidence:.3f} thresh={self.threshold} speech={is_speech}", flush=True)
-            logger.debug("VAD confidence=%.3f threshold=%.2f speech=%s", confidence, self.threshold, is_speech)
+            print(f"[VAD] rms={rms:.5f} conf={confidence:.3f} thresh={self.threshold} speech={is_speech}", flush=True)
+            logger.debug("VAD rms=%.5f confidence=%.3f threshold=%.2f speech=%s", rms, confidence, self.threshold, is_speech)
             return is_speech
         except Exception as e:
             print(f"[VAD] EXCEPTION: {e}", flush=True)
@@ -34,7 +36,7 @@ class VadEngine:
 
     def _preprocess(self, frame: bytes) -> torch.Tensor:
         audio = np.frombuffer(frame, dtype=np.int16) / 32768.0
-        return torch.tensor(audio, dtype=torch.float32).unsqueeze(0)  # shape (1, 320)
+        return torch.tensor(audio, dtype=torch.float32).unsqueeze(0)  # shape (1, 512)
 
     def get_confidence(self, frame: bytes) -> float:
         tensor = self._preprocess(frame)

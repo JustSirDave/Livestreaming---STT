@@ -49,8 +49,12 @@ export class AudioCapture {
     this._node.port.onmessage = (e) => this._onFrame(e.data);
 
     source.connect(this._node);
-    // Must connect to destination to keep the audio graph alive
-    this._node.connect(this.context.destination);
+    // Route through a muted gain node to keep the audio graph alive without
+    // playing mic audio back to speakers, which would trigger AEC cancellation.
+    const silentGain = this.context.createGain();
+    silentGain.gain.value = 0;
+    this._node.connect(silentGain);
+    silentGain.connect(this.context.destination);
 
     // OS-level mic mute (keyboard hardware key)
     this.stream.getTracks().forEach((track) => {

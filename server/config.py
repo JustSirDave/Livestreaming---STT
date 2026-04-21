@@ -7,7 +7,7 @@ VAD_THRESHOLD = 0.4          # probability [0.0–1.0] — Silero confidence cut
 VAD_FLUSH_FRAMES = 6         # frames — consecutive silent frames before flushing segment to ASR (~192ms at 32ms/frame)
 ASR_TIMEOUT = 10.0           # seconds — max inference time per segment; exceeded → empty ASRResult with is_timeout=True
 ASR_BEAM_SIZE = 1            # beams — 1 = greedy decode (fastest); increase for accuracy at cost of speed
-INTERIM_INTERVAL_SEC = 0.25  # seconds — how often the interim worker re-transcribes during speech
+INTERIM_INTERVAL_SEC = 1.5   # seconds — how often the interim worker re-transcribes during speech (Groq API ~300-600ms RTT)
 INTERIM_TAIL_FRAMES = 62     # frames — last ~2s fed to tiny.en interim (~150ms inference, keeps up with 0.25s interval)
 WS_QUEUE_MAX = 50            # frames — max depth of audio_queue (~1s buffer); frames dropped oldest-first when full
 MIN_SEGMENT_DURATION = 0.3   # seconds — segments shorter than this are discarded before ASR

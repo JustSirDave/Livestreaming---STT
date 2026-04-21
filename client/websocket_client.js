@@ -46,7 +46,6 @@ export class WebSocketClient {
     };
   }
 
-  // Send a 320-sample Int16Array frame as binary
   sendFrame(int16Frame) {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(int16Frame.buffer);
