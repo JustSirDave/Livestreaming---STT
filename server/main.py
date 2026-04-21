@@ -4,7 +4,7 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-import torch
+from silero_vad import load_silero_vad
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
@@ -38,10 +38,7 @@ app = FastAPI()
 async def startup():
     try:
         logger.info("Loading Silero VAD model...")
-        vad_model, _ = torch.hub.load(
-            "snakers4/silero-vad", "silero_vad", trust_repo=True
-        )
-        app.state.vad_model = vad_model
+        app.state.vad_model = load_silero_vad(onnx=False)
         logger.info("Silero VAD loaded.")
 
         executor = ThreadPoolExecutor(max_workers=2)
