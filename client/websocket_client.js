@@ -2,7 +2,7 @@
 // Sends binary audio frames upstream, receives JSON transcript downstream.
 // Reconnects automatically with exponential backoff.
 
-const WS_URL = `ws://${location.host}/ws`;
+const WS_URL = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_MAX_MS = 16000;
 const BACKOFF_MULTIPLIER = 2;
