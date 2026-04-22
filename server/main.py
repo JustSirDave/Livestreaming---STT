@@ -4,7 +4,8 @@ import logging
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-from silero_vad import load_silero_vad
+import requests
+import torch
 from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
@@ -31,6 +32,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+_VAD_JIT_URL = "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.jit"
+_VAD_CACHE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "silero_vad.jit")
+
+
+def _load_vad_model() -> torch.ScriptModule:
+    if not os.path.exists(_VAD_CACHE):
+        logger.info("Downloading Silero VAD JIT model...")
+        r = requests.get(_VAD_JIT_URL, timeout=60)
+        r.raise_for_status()
+        with open(_VAD_CACHE, "wb") as f:
+            f.write(r.content)
+        logger.info("Silero VAD JIT downloaded (%d bytes)", len(r.content))
+    model = torch.jit.load(_VAD_CACHE, map_location="cpu")
+    model.eval()
+    return model
+
+
 app = FastAPI()
 
 
@@ -38,7 +56,7 @@ app = FastAPI()
 async def startup():
     try:
         logger.info("Loading Silero VAD model...")
-        app.state.vad_model = load_silero_vad(onnx=False)
+        app.state.vad_model = _load_vad_model()
         logger.info("Silero VAD loaded.")
 
         executor = ThreadPoolExecutor(max_workers=2)
