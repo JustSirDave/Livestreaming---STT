@@ -10,8 +10,10 @@ import numpy as np
 
 from config import (
     FRAME_SIZE,
+    INTERIM_INTERVAL_FRAMES,
     INTERIM_INTERVAL_SEC,
     INTERIM_TAIL_FRAMES,
+    MAX_SPEECH_FRAMES,
     MIN_SEGMENT_DURATION,
     SAMPLE_RATE,
     VAD_FLUSH_FRAMES,
@@ -83,6 +85,12 @@ class SessionManager:
 
                 elif action == "ACCUMULATE":
                     self.speech_frames.append(frame)
+                    if (self.vad_state == VadState.SPEECH and
+                            len(self.speech_frames) % INTERIM_INTERVAL_FRAMES == 0 and
+                            len(self.speech_frames) > 0):
+                        asyncio.create_task(
+                            self._send_interim(asr_interim, post, audio_proc)
+                        )
                     accumulated_sec = len(self.speech_frames) * FRAME_SIZE / SAMPLE_RATE
                     if accumulated_sec >= VAD_MAX_SPEECH_SEC:
                         self._cancel_interim()
@@ -114,6 +122,11 @@ class SessionManager:
                 return "SPEECH_START"
 
         elif self.vad_state == VadState.SPEECH:
+            if (self.vad_state == VadState.SPEECH and
+                    len(self.speech_frames) >= MAX_SPEECH_FRAMES):
+                self.vad_state = VadState.SILENCE
+                self.silence_frame_count = 0
+                return "FLUSH"
             if is_speech:
                 self.silence_frame_count = 0
                 return "ACCUMULATE"
@@ -177,6 +190,26 @@ class SessionManager:
             pass
         except Exception:
             logger.exception("_interim_worker crashed — session %s", self.session_id)
+
+    async def _send_interim(self, asr, post, audio_proc) -> None:
+        try:
+            snapshot = list(self.speech_frames)
+            if not snapshot:
+                return
+            total_samples = sum(len(f) // 2 for f in snapshot)
+            if total_samples / SAMPLE_RATE < MIN_SEGMENT_DURATION:
+                return
+            try:
+                processed = audio_proc.process(snapshot, SAMPLE_RATE)
+            except AudioProcessingError:
+                return
+            result = await asr.transcribe(processed, segment_id=self.session_id + "_interim")
+            if result.is_timeout or not result.text.strip():
+                return
+            message = post.process(result, type="interim")
+            await self.transcript_queue.put(message.to_dict())
+        except Exception:
+            logger.exception("_send_interim failed — session %s", self.session_id)
 
     async def _flush_and_transcribe(self, frames_snapshot: List[bytes], segment_start: float, asr, post, audio_proc) -> None:
         try:
