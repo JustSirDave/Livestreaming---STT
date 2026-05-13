@@ -73,6 +73,11 @@ class SessionManager:
                     self.ring_buffer[:n - first] = arr[first:]
                 self._ring_pos = end_pos % len(self.ring_buffer)
 
+                all_tasks = asyncio.all_tasks()
+                pending_inference = [t for t in all_tasks if 'interim' in str(t)]
+                if len(pending_inference) > 2:
+                    logger.warning(f"TASK PILE-UP: {len(pending_inference)} interim tasks pending")
+
                 is_speech = vad.classify(frame)
                 action = self._handle_vad(is_speech)
 
@@ -193,6 +198,10 @@ class SessionManager:
 
     async def _send_interim(self, asr, post, audio_proc) -> None:
         try:
+            _interim_start = time.time()
+            logger.debug(f"INTERIM START: {len(self.speech_frames)} frames in buffer, "
+                         f"audio_queue size: {self.audio_queue.qsize()}, "
+                         f"transcript_queue size: {self.transcript_queue.qsize()}")
             snapshot = list(self.speech_frames)
             if not snapshot:
                 return
@@ -208,11 +217,14 @@ class SessionManager:
                 return
             message = post.process(result, type="interim")
             await self.transcript_queue.put(message.to_dict())
+            logger.debug(f"INTERIM DONE: took {time.time() - _interim_start:.3f}s")
         except Exception:
             logger.exception("_send_interim failed — session %s", self.session_id)
 
     async def _flush_and_transcribe(self, frames_snapshot: List[bytes], segment_start: float, asr, post, audio_proc) -> None:
         try:
+            logger.debug(f"FLUSH START: {len(frames_snapshot)} frames, "
+                         f"duration: {len(frames_snapshot) * FRAME_SIZE / SAMPLE_RATE:.2f}s")
             if not frames_snapshot:
                 return
 
