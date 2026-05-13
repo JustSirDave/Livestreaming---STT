@@ -52,6 +52,7 @@ class SessionManager:
         self.segment_start_time: float = 0.0
         self.segments: List[Segment] = []
         self._interim_task: Optional[asyncio.Task] = None
+        self._send_interim_task: Optional[asyncio.Task] = None
         self._flush_tasks: set = set()  # strong refs prevent GC of pending flush tasks
 
     async def pipeline_loop(self, vad, asr_interim, asr_final, post, audio_proc) -> None:
@@ -92,8 +93,9 @@ class SessionManager:
                     self.speech_frames.append(frame)
                     if (self.vad_state == VadState.SPEECH and
                             len(self.speech_frames) % INTERIM_INTERVAL_FRAMES == 0 and
-                            len(self.speech_frames) > 0):
-                        asyncio.create_task(
+                            len(self.speech_frames) > 0 and
+                            (self._send_interim_task is None or self._send_interim_task.done())):
+                        self._send_interim_task = asyncio.create_task(
                             self._send_interim(asr_interim, post, audio_proc)
                         )
                     accumulated_sec = len(self.speech_frames) * FRAME_SIZE / SAMPLE_RATE
@@ -202,7 +204,7 @@ class SessionManager:
             logger.debug(f"INTERIM START: {len(self.speech_frames)} frames in buffer, "
                          f"audio_queue size: {self.audio_queue.qsize()}, "
                          f"transcript_queue size: {self.transcript_queue.qsize()}")
-            snapshot = list(self.speech_frames)
+            snapshot = list(self.speech_frames[-100:])  # last ~3.2s — fixed size regardless of buffer length
             if not snapshot:
                 return
             total_samples = sum(len(f) // 2 for f in snapshot)
